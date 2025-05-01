@@ -1,33 +1,78 @@
-import React, { useRef, useState, useEffect } from "react";
+import React, { useRef, useState } from "react";
 
-const morseToText = {
-  '.-': 'A', '-...': 'B', '-.-.': 'C', '-..': 'D',
-  '.': 'E', '..-.': 'F', '--.': 'G', '....': 'H',
-  '..': 'I', '.---': 'J', '-.-': 'K', '.-..': 'L',
-  '--': 'M', '-.': 'N', '---': 'O', '.--.': 'P',
-  '--.-': 'Q', '.-.': 'R', '...': 'S', '-': 'T',
-  '..-': 'U', '...-': 'V', '.--': 'W', '-..-': 'X',
-  '-.--': 'Y', '--..': 'Z', '/': ' '
+const textToMorse = {
+  A: ".-", B: "-...", C: "-.-.", D: "-..",
+  E: ".", F: "..-.", G: "--.", H: "....",
+  I: "..", J: ".---", K: "-.-", L: ".-..",
+  M: "--", N: "-.", O: "---", P: ".--.",
+  Q: "--.-", R: ".-.", S: "...", T: "-",
+  U: "..-", V: "...-", W: ".--", X: "-..-",
+  Y: "-.--", Z: "--..", " ": "/"
 };
+
+const morseToText = Object.fromEntries(
+  Object.entries(textToMorse).map(([k, v]) => [v, k])
+);
 
 export default function App() {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
+
+  const [inputText, setInputText] = useState("");
+  const [morseOutput, setMorseOutput] = useState("");
   const [recording, setRecording] = useState(false);
   const [decodedText, setDecodedText] = useState("");
-  const [morseCode, setMorseCode] = useState("");
   const [stream, setStream] = useState(null);
-  const [log, setLog] = useState([]);
 
+  const threshold = 100;
   let prevBright = 0;
   let flashStart = null;
   let flashPattern = "";
 
-  const threshold = 100; // Adjust for ambient light
-
-  const decodeMorse = (morse) => {
-    return morse.trim().split(" ").map(code => morseToText[code] || '').join('');
+  const convertToMorse = () => {
+    const morse = inputText
+      .toUpperCase()
+      .split("")
+      .map((char) => textToMorse[char] || "")
+      .join(" ");
+    setMorseOutput(morse);
   };
+
+  const blinkMorse = () => {
+    const flashes = morseOutput.split("");
+
+    let i = 0;
+    const flash = () => {
+      if (i >= flashes.length) return;
+      const screen = document.body;
+      if (flashes[i] === ".") {
+        screen.style.backgroundColor = "white";
+        setTimeout(() => {
+          screen.style.backgroundColor = "black";
+          i++;
+          setTimeout(flash, 200);
+        }, 200);
+      } else if (flashes[i] === "-") {
+        screen.style.backgroundColor = "white";
+        setTimeout(() => {
+          screen.style.backgroundColor = "black";
+          i++;
+          setTimeout(flash, 300);
+        }, 500);
+      } else {
+        i++;
+        setTimeout(flash, 300);
+      }
+    };
+    flash();
+  };
+
+  const decodeMorse = (morse) =>
+    morse
+      .trim()
+      .split(" ")
+      .map((code) => morseToText[code] || "")
+      .join("");
 
   const startWebcam = async () => {
     const stream = await navigator.mediaDevices.getUserMedia({ video: true });
@@ -36,9 +81,7 @@ export default function App() {
   };
 
   const stopWebcam = () => {
-    if (stream) {
-      stream.getTracks().forEach(track => track.stop());
-    }
+    if (stream) stream.getTracks().forEach((track) => track.stop());
     setStream(null);
   };
 
@@ -51,37 +94,31 @@ export default function App() {
 
     let brightness = 0;
     for (let i = 0; i < imageData.length; i += 4) {
-      const avg = (imageData[i] + imageData[i + 1] + imageData[i + 2]) / 3;
-      brightness += avg;
+      brightness +=
+        (imageData[i] + imageData[i + 1] + imageData[i + 2]) / 3;
     }
     brightness = brightness / (imageData.length / 4);
 
     const now = Date.now();
 
     if (brightness > threshold && prevBright <= threshold) {
-      // Flash started
       flashStart = now;
     } else if (brightness <= threshold && prevBright > threshold && flashStart) {
-      // Flash ended
       const duration = now - flashStart;
-
-      if (duration < 300) flashPattern += '.';
-      else flashPattern += '-';
-
-      flashPattern += ' ';
+      if (duration < 300) flashPattern += ".";
+      else flashPattern += "-";
+      flashPattern += " ";
       flashStart = null;
     }
 
     prevBright = brightness;
 
-    if (recording) {
-      requestAnimationFrame(analyzeFrame);
-    }
+    if (recording) requestAnimationFrame(analyzeFrame);
   };
 
   const handleStart = () => {
     setRecording(true);
-    flashPattern = '';
+    flashPattern = "";
     startWebcam();
     setTimeout(() => analyzeFrame(), 1000);
   };
@@ -90,22 +127,34 @@ export default function App() {
     setRecording(false);
     stopWebcam();
     const morse = flashPattern.trim();
-    setMorseCode(morse);
     setDecodedText(decodeMorse(morse));
-    setLog(log => [...log, { morse, text: decodeMorse(morse) }]);
   };
 
   return (
-    <div className="App">
-      <h1>Morse Code from Flashlight</h1>
-      <video ref={videoRef} width="300" height="200" autoPlay style={{ display: 'block', marginBottom: '10px' }} />
-      <canvas ref={canvasRef} width="100" height="100" style={{ display: 'none' }} />
-      <button onClick={handleStart}>Start Recording</button>
-      <button onClick={handleStop}>Stop Recording</button>
-      <p><strong>Morse:</strong> {morseCode}</p>
-      <p><strong>Text:</strong> {decodedText}</p>
+    <div style={{ padding: 20, backgroundColor: "black", color: "white", minHeight: "100vh" }}>
+      <h1>Morse Code Communicator</h1>
+
+      <h2>Text to Morse</h2>
+      <input
+        value={inputText}
+        onChange={(e) => setInputText(e.target.value)}
+        placeholder="Enter text"
+      />
+      <button onClick={convertToMorse}>Convert</button>
+      <button onClick={blinkMorse}>Flash Morse</button>
+      <p><b>Morse:</b> {morseOutput}</p>
+
+      <h2>Morse to Text (using Camera)</h2>
+      <video ref={videoRef} width="300" height="200" autoPlay />
+      <canvas ref={canvasRef} width="100" height="100" style={{ display: "none" }} />
+      <div style={{ marginTop: 10 }}>
+        <button onClick={handleStart}>Start Recording</button>
+        <button onClick={handleStop}>Stop Recording</button>
+      </div>
+      <p><b>Decoded Text:</b> {decodedText}</p>
     </div>
   );
 }
+
 
 
