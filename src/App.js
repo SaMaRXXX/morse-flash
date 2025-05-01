@@ -1,110 +1,111 @@
-import React, { useState, useEffect } from "react";
-import "./App.css";
+import React, { useRef, useState, useEffect } from "react";
 
-const morseCode = {
-  A: ".-", B: "-...", C: "-.-.", D: "-..", E: ".", F: "..-.",
-  G: "--.", H: "....", I: "..", J: ".---", K: "-.-", L: ".-..",
-  M: "--", N: "-.", O: "---", P: ".--.", Q: "--.-", R: ".-.",
-  S: "...", T: "-", U: "..-", V: "...-", W: ".--", X: "-..-",
-  Y: "-.--", Z: "--..", " ": "/",
-  1: ".----", 2: "..---", 3: "...--", 4: "....-", 5: ".....",
-  6: "-....", 7: "--...", 8: "---..", 9: "----.", 0: "-----",
+const morseToText = {
+  '.-': 'A', '-...': 'B', '-.-.': 'C', '-..': 'D',
+  '.': 'E', '..-.': 'F', '--.': 'G', '....': 'H',
+  '..': 'I', '.---': 'J', '-.-': 'K', '.-..': 'L',
+  '--': 'M', '-.': 'N', '---': 'O', '.--.': 'P',
+  '--.-': 'Q', '.-.': 'R', '...': 'S', '-': 'T',
+  '..-': 'U', '...-': 'V', '.--': 'W', '-..-': 'X',
+  '-.--': 'Y', '--..': 'Z', '/': ' '
 };
 
-const inverseMorseCode = Object.fromEntries(
-  Object.entries(morseCode).map(([k, v]) => [v, k])
-);
-
-function App() {
-  const [text, setText] = useState("");
-  const [morse, setMorse] = useState("");
-  const [flashText, setFlashText] = useState("");
+export default function App() {
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
   const [recording, setRecording] = useState(false);
-  const [recordedMorse, setRecordedMorse] = useState("");
+  const [decodedText, setDecodedText] = useState("");
+  const [morseCode, setMorseCode] = useState("");
+  const [stream, setStream] = useState(null);
+  const [log, setLog] = useState([]);
 
-  const textToMorse = (text) =>
-    text
-      .toUpperCase()
-      .split("")
-      .map((char) => morseCode[char] || "")
-      .join(" ");
+  let prevBright = 0;
+  let flashStart = null;
+  let flashPattern = "";
 
-  const morseToText = (code) =>
-    code
-      .split(" ")
-      .map((char) => inverseMorseCode[char] || "")
-      .join("");
+  const threshold = 100; // Adjust for ambient light
 
-  const flashMorse = async () => {
-    const unit = 300;
-    for (let symbol of morse) {
-      if (symbol === ".") {
-        document.body.style.backgroundColor = "white";
-        await new Promise((r) => setTimeout(r, unit));
-      } else if (symbol === "-") {
-        document.body.style.backgroundColor = "white";
-        await new Promise((r) => setTimeout(r, unit * 3));
-      }
-      document.body.style.backgroundColor = "black";
-      await new Promise((r) => setTimeout(r, unit));
+  const decodeMorse = (morse) => {
+    return morse.trim().split(" ").map(code => morseToText[code] || '').join('');
+  };
+
+  const startWebcam = async () => {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+    videoRef.current.srcObject = stream;
+    setStream(stream);
+  };
+
+  const stopWebcam = () => {
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+    }
+    setStream(null);
+  };
+
+  const analyzeFrame = () => {
+    const canvas = canvasRef.current;
+    const context = canvas.getContext("2d");
+
+    context.drawImage(videoRef.current, 0, 0, 100, 100);
+    const imageData = context.getImageData(0, 0, 100, 100).data;
+
+    let brightness = 0;
+    for (let i = 0; i < imageData.length; i += 4) {
+      const avg = (imageData[i] + imageData[i + 1] + imageData[i + 2]) / 3;
+      brightness += avg;
+    }
+    brightness = brightness / (imageData.length / 4);
+
+    const now = Date.now();
+
+    if (brightness > threshold && prevBright <= threshold) {
+      // Flash started
+      flashStart = now;
+    } else if (brightness <= threshold && prevBright > threshold && flashStart) {
+      // Flash ended
+      const duration = now - flashStart;
+
+      if (duration < 300) flashPattern += '.';
+      else flashPattern += '-';
+
+      flashPattern += ' ';
+      flashStart = null;
+    }
+
+    prevBright = brightness;
+
+    if (recording) {
+      requestAnimationFrame(analyzeFrame);
     }
   };
 
-  useEffect(() => {
-    document.body.style.backgroundColor = "black";
-  }, []);
-
-  const handleRecord = () => {
+  const handleStart = () => {
     setRecording(true);
-    setRecordedMorse("");
-    let recording = "";
-    const start = Date.now();
-    const handleKeyDown = () => {
-      const t = Date.now() - start;
-      recording += t < 400 ? "." : "-";
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    setTimeout(() => {
-      window.removeEventListener("keydown", handleKeyDown);
-      setRecordedMorse(recording);
-      setRecording(false);
-      setFlashText(morseToText(recording));
-    }, 5000);
+    flashPattern = '';
+    startWebcam();
+    setTimeout(() => analyzeFrame(), 1000);
+  };
+
+  const handleStop = () => {
+    setRecording(false);
+    stopWebcam();
+    const morse = flashPattern.trim();
+    setMorseCode(morse);
+    setDecodedText(decodeMorse(morse));
+    setLog(log => [...log, { morse, text: decodeMorse(morse) }]);
   };
 
   return (
-    <div style={{ color: "white", textAlign: "center", padding: "20px" }}>
-      <h1>Morse Code Flash Communicator</h1>
-
-      <input
-        type="text"
-        value={text}
-        placeholder="Enter text"
-        onChange={(e) => {
-          setText(e.target.value);
-          setMorse(textToMorse(e.target.value));
-        }}
-        style={{ padding: "10px", fontSize: "16px", width: "300px" }}
-      />
-
-      <div style={{ margin: "20px" }}>
-        <p><strong>Morse Code:</strong> {morse}</p>
-        <button onClick={flashMorse} style={{ padding: "10px 20px" }}>
-          Flash Morse Code
-        </button>
-      </div>
-
-      <div style={{ marginTop: "30px" }}>
-        <h3>Record Morse using Keyboard</h3>
-        <button onClick={handleRecord} disabled={recording}>
-          {recording ? "Recording..." : "Start Recording"}
-        </button>
-        <p><strong>Recorded Morse:</strong> {recordedMorse}</p>
-        <p><strong>Decoded Text:</strong> {flashText}</p>
-      </div>
+    <div className="App">
+      <h1>Morse Code from Flashlight</h1>
+      <video ref={videoRef} width="300" height="200" autoPlay style={{ display: 'block', marginBottom: '10px' }} />
+      <canvas ref={canvasRef} width="100" height="100" style={{ display: 'none' }} />
+      <button onClick={handleStart}>Start Recording</button>
+      <button onClick={handleStop}>Stop Recording</button>
+      <p><strong>Morse:</strong> {morseCode}</p>
+      <p><strong>Text:</strong> {decodedText}</p>
     </div>
   );
 }
 
-export default App;
 
