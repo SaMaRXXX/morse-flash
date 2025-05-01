@@ -38,34 +38,34 @@ export default function App() {
     setMorseOutput(morse);
   };
 
-  const blinkMorse = () => {
-    const flashes = morseOutput.split("");
+ const blinkMorse = () => {
+  const flashes = morseOutput.split("");
+  const flashScreen = document.getElementById("flash-screen");
 
-    let i = 0;
-    const flash = () => {
-      if (i >= flashes.length) return;
-      const screen = document.body;
-      if (flashes[i] === ".") {
-        screen.style.backgroundColor = "white";
-        setTimeout(() => {
-          screen.style.backgroundColor = "black";
-          i++;
-          setTimeout(flash, 200);
-        }, 200);
-      } else if (flashes[i] === "-") {
-        screen.style.backgroundColor = "white";
-        setTimeout(() => {
-          screen.style.backgroundColor = "black";
-          i++;
-          setTimeout(flash, 300);
-        }, 500);
-      } else {
+  let i = 0;
+  const flash = () => {
+    if (i >= flashes.length) {
+      flashScreen.style.display = "none";
+      return;
+    }
+
+    const symbol = flashes[i];
+    if (symbol === "." || symbol === "-") {
+      flashScreen.style.display = "block";
+      setTimeout(() => {
+        flashScreen.style.display = "none";
         i++;
-        setTimeout(flash, 300);
-      }
-    };
-    flash();
+        setTimeout(flash, symbol === "." ? 200 : 500);
+      }, symbol === "." ? 200 : 500);
+    } else {
+      i++;
+      setTimeout(flash, 300);
+    }
   };
+
+  flash();
+};
+
 
   const decodeMorse = (morse) =>
     morse
@@ -152,6 +152,17 @@ export default function App() {
         <button onClick={handleStop}>Stop Recording</button>
       </div>
       <p><b>Decoded Text:</b> {decodedText}</p>
+          <div id="flash-screen" style={{
+  position: 'fixed',
+  top: 0,
+  left: 0,
+  width: '100vw',
+  height: '100vh',
+  backgroundColor: 'black',
+  zIndex: 9999,
+  display: 'none',
+}} />
+
     </div>
   );
 }
